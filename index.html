@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poker Toolkit · Bayesian Win Rate & Bankroll Manager & Session Timer</title>
+<style>
+  :root{
+    --bg:#0f1216; --card:#1a1f27; --card2:#222933; --line:#2c333f;
+    --text:#e8ebf0; --muted:#9aa4b2; --accent:#30d158; --blue:#0a84ff;
+    --purple:#bf5af2; --orange:#ff9f0a; --red:#ff453a; --yellow:#ffd60a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:980px;margin:0 auto;padding:20px 16px 60px}
+  header h1{font-size:22px;font-weight:700}
+  header p{color:var(--muted);font-size:13px;margin-top:4px}
+  .tabs{display:flex;gap:8px;margin:20px 0 16px}
+  .tab{flex:1;text-align:center;padding:12px;border-radius:12px;background:var(--card);
+    color:var(--muted);font-weight:600;cursor:pointer;border:1px solid var(--line);font-size:14px;transition:.15s}
+  .tab.active{background:var(--accent);color:#08130a;border-color:var(--accent)}
+  .view{display:none}.view.active{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:16px}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);letter-spacing:.5px;margin-bottom:14px;text-transform:uppercase}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  .field input,.field select{width:100%;background:var(--card2);border:1px solid var(--line);border-radius:10px;
+    color:var(--text);padding:11px 12px;font-size:16px;font-weight:600;outline:none}
+  .field input:focus,.field select:focus{border-color:var(--accent)}
+  .metric{display:flex;justify-content:space-between;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line)}
+  .metric:last-child{border-bottom:0}
+  .metric .k{color:var(--muted);font-size:13px}
+  .metric .v{font-size:20px;font-weight:700}
+  .big{background:linear-gradient(135deg,#15351f,#1a1f27);border:1px solid rgba(48,209,88,.35);
+    border-radius:14px;padding:16px;margin-bottom:12px}
+  .big .lab{font-size:12px;color:var(--accent);font-weight:700;margin-bottom:4px}
+  .big .val{font-size:26px;font-weight:800}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:10px 8px;text-align:center;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:600}
+  td.lvl{text-align:left;font-weight:700}
+  tr.cur{background:rgba(48,209,88,.12)}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px}
+  .muted{color:var(--muted);font-size:12px;margin-top:6px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
+  .chartbox{position:relative;width:100%}
+  canvas{width:100%;height:auto;display:block}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:24px;line-height:1.7}
+
+  /* ---- Timer ---- */
+  .timer-display{font-size:72px;font-weight:800;text-align:center;padding:16px 0 6px;
+    font-variant-numeric:tabular-nums;letter-spacing:4px;line-height:1.1}
+  .timer-label{text-align:center;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .timer-bar{background:var(--card2);height:5px;border-radius:3px;margin:8px 0 18px;overflow:hidden}
+  .timer-bar-inner{height:100%;background:var(--accent);border-radius:3px;transition:width .4s ease}
+  .timer-actions{display:flex;gap:8px;margin:12px 0 0}
+  .timer-actions .btn{flex:1;padding:12px;border-radius:12px;border:1px solid var(--line);
+    font-size:15px;font-weight:700;cursor:pointer;transition:.15s;text-align:center}
+  .btn-start{background:var(--accent);color:#08130a;border-color:var(--accent)}
+  .btn-start:hover{opacity:.85}
+  .btn-pause{background:var(--orange);color:#1a1200;border-color:var(--orange)}
+  .btn-pause:hover{opacity:.85}
+  .btn-reset{background:var(--card2);color:var(--text);border-color:var(--line)}
+  .btn-reset:hover{background:var(--line)}
+  .btn:disabled{opacity:.35;cursor:default}
+  .timer-status-pill{display:inline-block;font-size:12px;font-weight:700;padding:3px 12px;border-radius:20px}
+  .status-ready{background:#222933;color:var(--muted)}
+  .status-running{background:rgba(48,209,88,.18);color:var(--accent)}
+  .status-paused{background:rgba(255,159,10,.18);color:var(--orange)}
+  .status-done{background:rgba(255,69,58,.18);color:var(--red)}
+  .timer-minutes-input{text-align:center;font-size:22px!important;font-weight:800!important;padding:8px!important;max-width:120px;margin:0 auto;display:block}
+  .today-card .big{background:linear-gradient(135deg,#1f2a35,#1a1f27);border-color:rgba(10,132,255,.35)}
+  .today-card .big .lab{color:var(--blue)}
+
+  /* ---- Timer Overlay ---- */
+  #timer_overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9999;
+    align-items:center;justify-content:center}
+  #timer_overlay.show{display:flex}
+  .overlay-inner{background:var(--card);border:2px solid var(--accent);border-radius:24px;
+    padding:40px 36px;text-align:center;max-width:380px;width:90%;animation:pop .3s ease}
+  @keyframes pop{0%{transform:scale(.85);opacity:0}100%{transform:scale(1);opacity:1}}
+  .overlay-inner .icon{font-size:56px;margin-bottom:8px}
+  .overlay-inner h2{font-size:24px;margin-bottom:4px;color:var(--accent)}
+  .overlay-inner p{color:var(--muted);font-size:14px;margin-bottom:20px}
+  .overlay-inner .btn-dismiss{padding:14px 48px;border-radius:14px;border:none;
+    background:var(--accent);color:#08130a;font-size:16px;font-weight:700;cursor:pointer;transition:.15s}
+  .overlay-inner .btn-dismiss:hover{opacity:.85}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>♠ Poker Toolkit</h1>
+    <p>Bayesian Win Rate Analysis · Aggressive Bankroll Management · Session Timer</p>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-v="calc">Bayesian Win Rate</div>
+    <div class="tab" data-v="brm">Bankroll Manager</div>
+    <div class="tab" data-v="timer">⏱ Session Timer</div>
+  </div>
+
+  <div class="view active" id="calc">
+    <div class="card">
+      <h2>① Inputs</h2>
+      <div class="grid">
+        <div class="field"><label>Observed Win Rate (bb/100)</label><input id="wr" type="number" step="0.1" value="-3"></div>
+        <div class="field"><label>Hands Played</label><input id="hands" type="number" step="1000" value="50000"></div>
+        <div class="field"><label>Standard Deviation</label>
+          <select id="sdtype">
+            <option value="160">HU NLHE (160)</option>
+            <option value="95" selected>Online 6-Max NLHE (95)</option>
+            <option value="147">Live Fullring NLHE (147)</option>
+            <option value="custom">Custom…</option>
+          </select>
+        </div>
+        <div class="field"><label>Custom Std Dev (used only when "Custom")</label><input id="sdcustom" type="number" step="0.01" value="50.89"></div>
+        <div class="field"><label>Population Mean / Rake (bb/100)</label><input id="popmean" type="number" step="0.01" value="-5.58"></div>
+        <div class="field"><label>Population Spread (bb/100)</label><input id="popsd" type="number" step="0.1" value="8"></div>
+      </div>
+      <div class="muted">How it works: your observed win rate and the population mean are blended by their precision, giving your "true" posterior win rate. More hands and lower variance push the estimate toward your observed results.</div>
+    </div>
+
+    <div class="card">
+      <h2>② Results</h2>
+      <div class="big"><div class="lab">Bayesian Win Rate</div><div class="val" id="o_post">–</div></div>
+      <div class="big" style="background:linear-gradient(135deg,#2a1f3a,#1a1f27);border-color:rgba(191,90,242,.35)">
+        <div class="lab" style="color:var(--purple)">Better Than</div><div class="val" id="o_better">–</div></div>
+      <div class="metric"><span class="k">95% Credible Interval</span><span class="v" id="o_ci">–</span></div>
+      <div class="metric"><span class="k">Posterior Std Error</span><span class="v" id="o_se">–</span></div>
+      <div class="metric"><span class="k">Weight (toward observed)</span><span class="v" id="o_w">–</span></div>
+    </div>
+
+    <div class="card">
+      <h2>③ Distribution Curves</h2>
+      <div class="chartbox"><canvas id="chart"></canvas></div>
+      <div class="legend">
+        <span><i style="background:#0a84ff"></i>Population</span>
+        <span><i style="background:#ffd60a"></i>Observed</span>
+        <span><i style="background:#30d158"></i>Posterior (true)</span>
+      </div>
+      <div class="muted">The further right the green curve sits, the stronger you are.</div>
+    </div>
+  </div>
+
+  <div class="view" id="brm">
+    <div class="card">
+      <h2>① Inputs</h2>
+      <div class="grid">
+        <div class="field"><label>Base Stake (USD)</label><input id="base" type="number" step="1" value="0"></div>
+        <div class="field"><label>FX Rate (USD/CNY)</label><input id="fx" type="number" step="0.01" value="0"></div>
+        <div class="field"><label>Deposited Bankroll (USD)</label><input id="dep" type="number" step="1" value="0"></div>
+        <div class="field"><label>Current Bankroll (USD) — for level check</label><input id="cur" type="number" step="1" value="0"></div>
+      </div>
+      <div class="muted">All values are saved locally in your browser. Refresh or come back later — they stay as you left them.</div>
+    </div>
+
+    <div class="card">
+      <h2>② Bankroll Dashboard</h2>
+      <div class="metric"><span class="k">Shot Stake</span><span class="v" id="b_shot">–</span></div>
+      <div class="metric"><span class="k">Initial Bankroll ($)</span><span class="v" id="b_init">–</span></div>
+      <div class="metric"><span class="k">Initial Bankroll (¥)</span><span class="v" id="b_initcny">–</span></div>
+      <div class="metric"><span class="k">Stop-Loss / Bust Line ($)</span><span class="v" style="color:var(--red)" id="b_stop">–</span></div>
+      <div class="metric"><span class="k">Remaining to Deposit ($)</span><span class="v" style="color:var(--orange)" id="b_remain">–</span></div>
+    </div>
+
+    <div class="card">
+      <h2>③ Forced Move-Down Protocol (current level highlighted)</h2>
+      <table>
+        <thead><tr><th style="text-align:left">Protocol</th><th>Play</th><th>Range ($)</th></tr></thead>
+        <tbody id="planbody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>④ 4-Tabling Hard Stop-Loss Lines</h2>
+      <div class="muted" style="margin-top:-8px;margin-bottom:10px">When 4-tabling, once your bankroll drops to the listed amount you must move down / leave that stake.</div>
+      <table>
+        <thead><tr><th style="text-align:left">Table & Trigger</th><th>Drops To ($)</th></tr></thead>
+        <tbody id="stopbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ========== TAB 3: SESSION TIMER ========== -->
+  <div class="view" id="timer">
+    <div class="card">
+      <h2>⏱ Session Timer</h2>
+      <div class="timer-label" id="timer_status_label"><span class="timer-status-pill status-ready">Ready</span></div>
+      <div class="timer-display" id="timer_display">30:00</div>
+      <div class="timer-bar"><div class="timer-bar-inner" id="timer_bar" style="width:100%"></div></div>
+      <div class="grid">
+        <div class="field"><label>Session Length (minutes)</label><input id="timer_minutes" class="timer-minutes-input" type="number" min="1" max="480" value="30"></div>
+      </div>
+      <div class="timer-actions">
+        <div class="btn btn-start" id="btn_start">▶ Start</div>
+        <div class="btn btn-pause" id="btn_pause" style="display:none">⏸ Pause</div>
+        <div class="btn btn-reset" id="btn_reset">⟳ Reset</div>
+      </div>
+    </div>
+
+    <div class="card today-card">
+      <h2>📊 Today's Activity</h2>
+      <div class="big"><div class="lab">Total Session Time Today</div><div class="val" id="today_total">0 min</div></div>
+      <div class="muted">Resets daily. Only counts completed sessions.</div>
+    </div>
+  </div>
+
+  <!-- Timer Completion Overlay -->
+  <div id="timer_overlay">
+    <div class="overlay-inner">
+      <div class="icon">⏰</div>
+      <h2>Time's Up!</h2>
+      <p id="overlay_msg">Your session has ended.</p>
+      <button class="btn-dismiss" id="overlay_dismiss">OK</button>
+    </div>
+  </div>
+
+  <div class="foot">
+    Your data is stored only in your local browser and is never uploaded.<br>
+    Poker carries risk. Bankroll management and win-rate analysis are for reference only and are not financial or gambling advice.
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const num=id=>parseFloat($(id).value)||0;
+const fmtUSD=v=>'$'+Math.round(v).toLocaleString('en-US');
+const fmtCNY=v=>'¥'+Math.round(v).toLocaleString('en-US');
+
+// ---- Tab switching ----
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active'); $(t.dataset.v).classList.add('active');
+  if(t.dataset.v==='calc') drawChart();
+});
+
+// ---- Bayesian Win Rate ----
+function erf(x){const s=x<0?-1:1;x=Math.abs(x);
+  const a1=.254829592,a2=-.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=.3275911;
+  const t=1/(1+p*x);const y=1-((((a5*t+a4)*t+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);return s*y;}
+const normCdf=(x,mu,sd)=>0.5*(1+erf((x-mu)/(sd*Math.SQRT2)));
+const normPdf=(x,mu,sd)=>Math.exp(-((x-mu)**2)/(2*sd*sd))/(sd*Math.sqrt(2*Math.PI));
+
+let cache={};
+function renderCalc(){
+  const wr=num('wr'), hands=num('hands'), popMean=num('popmean'), popSd=num('popsd');
+  const sd = $('sdtype').value==='custom' ? num('sdcustom') : parseFloat($('sdtype').value);
+  const se = sd/Math.sqrt(hands/100);
+  const w  = (1/se**2)/((1/se**2)+(1/popSd**2));
+  const post = w*wr + (1-w)*popMean;
+  const postSe = se*Math.sqrt(w);
+  const better = normCdf(post, popMean, popSd);
+  $('o_post').textContent = post.toFixed(1)+' ± '+postSe.toFixed(1)+' bb/100';
+  $('o_better').textContent = (better*100).toFixed(1)+'% of players';
+  $('o_ci').textContent = (post-postSe).toFixed(1)+' to '+(post+postSe).toFixed(1)+' bb/100';
+  $('o_se').textContent = postSe.toFixed(2)+' bb/100';
+  $('o_w').textContent = (w*100).toFixed(1)+'%';
+  cache={wr,se,popMean,popSd,post,postSe};
+  drawChart();
+}
+
+// ---- lightweight canvas chart ----
+function drawChart(){
+  const cv=$('chart'); if(!cv.clientWidth) return;
+  const dpr=window.devicePixelRatio||1;
+  const W=cv.clientWidth, H=Math.max(200,Math.round(W*0.5));
+  cv.width=W*dpr; cv.height=H*dpr; cv.style.height=H+'px';
+  const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+  const padL=10,padR=10,padT=10,padB=26;
+  const xmin=-30,xmax=30, plotW=W-padL-padR, plotH=H-padT-padB;
+  const series=[
+    {mu:cache.popMean,sd:cache.popSd,c:'#0a84ff'},
+    {mu:cache.wr,sd:cache.se,c:'#ffd60a'},
+    {mu:cache.post,sd:cache.postSe,c:'#30d158'},
+  ];
+  const N=240; let ymax=0;
+  series.forEach(s=>{s.pts=[];for(let i=0;i<=N;i++){const x=xmin+(xmax-xmin)*i/N;const y=normPdf(x,s.mu,s.sd);s.pts.push([x,y]);if(y>ymax)ymax=y;}});
+  ymax*=1.1; if(ymax<=0)ymax=1;
+  const X=x=>padL+(x-xmin)/(xmax-xmin)*plotW;
+  const Y=y=>padT+plotH-(y/ymax)*plotH;
+  // grid + x axis labels
+  ctx.strokeStyle='#222933'; ctx.fillStyle='#9aa4b2'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  for(let gx=-30;gx<=30;gx+=10){ctx.beginPath();ctx.moveTo(X(gx),padT);ctx.lineTo(X(gx),padT+plotH);ctx.stroke();ctx.fillText(gx,X(gx),H-8);}
+  ctx.beginPath();ctx.moveTo(padL,padT+plotH);ctx.lineTo(W-padR,padT+plotH);ctx.strokeStyle='#2c333f';ctx.stroke();
+  // curves
+  series.forEach(s=>{
+    ctx.beginPath();
+    s.pts.forEach((p,i)=>{const px=X(p[0]),py=Y(p[1]);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});
+    ctx.lineWidth=2.4; ctx.strokeStyle=s.c; ctx.stroke();
+    ctx.lineTo(X(xmax),Y(0)); ctx.lineTo(X(xmin),Y(0)); ctx.closePath();
+    ctx.globalAlpha=.10; ctx.fillStyle=s.c; ctx.fill(); ctx.globalAlpha=1;
+  });
+}
+window.addEventListener('resize',drawChart);
+
+['wr','hands','sdtype','sdcustom','popmean','popsd'].forEach(id=>$(id).addEventListener('input',renderCalc));
+
+// ---- Bankroll Manager (with localStorage persistence) ----
+const BRM_KEY = 'poker_bankroll_data';
+
+function loadBrmData(){
+  const raw = localStorage.getItem(BRM_KEY);
+  if(raw){
+    try{
+      const d = JSON.parse(raw);
+      ['base','fx','dep','cur'].forEach(k=>{
+        if(d[k]!==undefined && d[k]!==null) $(k).value = d[k];
+      });
+    }catch(e){}
+  }
+}
+
+function saveBrmData(){
+  const d = {};
+  ['base','fx','dep','cur'].forEach(k=>{ d[k] = num(k); });
+  localStorage.setItem(BRM_KEY, JSON.stringify(d));
+}
+
+const protocols=[
+  {name:'AGGRESSIVE SHOT',act:'2B',hi:28.75,lo:18.75,c:'var(--purple)'},
+  {name:'DEFENSIVE 1',act:'B',hi:18.75,lo:13.75,c:'var(--blue)'},
+  {name:'DEFENSIVE 2',act:'B/2',hi:13.75,lo:11.25,c:'var(--yellow)'},
+  {name:'SURVIVAL MODE',act:'B/4',hi:11.25,lo:10,c:'var(--orange)'},
+  {name:'CUSHION RECOVERY',act:'B (recover)',hi:10,lo:5,c:'var(--accent)'},
+  {name:'BANKRUPT',act:'STOP',hi:5,lo:0,c:'var(--red)'},
+];
+const stops=[
+  {stake:2,   thresh:10.75, note:'Highest stake table'},
+  {stake:1,   thresh:9.75,  note:'Main stake table'},
+  {stake:0.5, thresh:9.25,  note:'Defensive stake table'},
+  {stake:0.25,thresh:9,     note:'Survival stake table'},
+  {stake:1,   thresh:1,     note:'Main table · second move-down'},
+];
+function actVal(a,B){return a==='2B'?2*B:a==='B'?B:a==='B/2'?B/2:a==='B/4'?B/4:a==='B (recover)'?B:null;}
+function renderBrm(){
+  const B=num('base'), fx=num('fx'), dep=num('dep'), cur=num('cur');
+  const init=28.75*B, stop=5*B, shot=2*B;
+  $('b_shot').textContent=fmtUSD(shot);
+  $('b_init').textContent=fmtUSD(init);
+  $('b_initcny').textContent=fmtCNY(init*fx);
+  $('b_stop').textContent=fmtUSD(stop);
+  $('b_remain').textContent=fmtUSD(Math.max(0,init-dep));
+  $('planbody').innerHTML=protocols.map(p=>{
+    let inBand = p.name==='AGGRESSIVE SHOT' ? cur>=p.lo*B
+      : p.name==='BANKRUPT' ? cur<p.hi*B
+      : (cur>=p.lo*B && cur<p.hi*B);
+    const range = p.name==='BANKRUPT' ? ('< '+fmtUSD(5*B)) : (fmtUSD(p.hi*B)+' – '+fmtUSD(p.lo*B));
+    const av=actVal(p.act,B);
+    const action = av===null ? 'STOP' : ('Play '+fmtUSD(av)+(p.act==='B (recover)'?' (recover)':''));
+    return `<tr class="${inBand?'cur':''}">
+      <td class="lvl"><span class="pill" style="background:${p.c}22;color:${p.c}">${p.name}</span>${inBand?' ◀ NOW':''}</td>
+      <td>${action}</td><td>${range}</td></tr>`;
+  }).join('');
+  $('stopbody').innerHTML=stops.map(s=>{
+    return `<tr><td class="lvl">${fmtUSD(s.stake*B)} table · move-down line<div class="muted" style="margin:0">${s.note}</div></td><td style="color:var(--red);font-weight:700">${fmtUSD(s.thresh*B)}</td></tr>`;
+  }).join('');
+  saveBrmData();
+}
+['base','fx','dep','cur'].forEach(id=>$(id).addEventListener('input',renderBrm));
+loadBrmData();
+renderBrm();
+
+// ======================== SESSION TIMER ========================
+let timerState = 'idle';   // idle | running | paused | done
+let timerRemaining = 1800; // seconds
+let timerEnd = 0;          // timestamp ms
+let timerInterval = null;
+
+function timerFormatDisplay(sec){
+  const m = Math.floor(sec/60), s = sec%60;
+  return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+}
+
+function timerUpdateUI(){
+  $('timer_display').textContent = timerFormatDisplay(timerRemaining);
+  const totalSec = parseInt($('timer_minutes').value)*60 || 1800;
+  const pct = totalSec > 0 ? (timerRemaining / totalSec) * 100 : 0;
+  $('timer_bar').style.width = Math.max(0, Math.min(100, pct))+'%';
+}
+
+function timerSetStatus(label, cls){
+  $('timer_status_label').innerHTML = '<span class="timer-status-pill '+cls+'">'+label+'</span>';
+}
+
+function timerShowButtons(showStart, showPause, showReset){
+  $('btn_start').style.display = showStart ? 'block' : 'none';
+  $('btn_pause').style.display = showPause ? 'block' : 'none';
+  $('btn_reset').style.display = showReset ? 'block' : 'none';
+  if(timerState === 'running') $('btn_pause').textContent = '⏸ Pause';
+  if(timerState === 'paused') $('btn_pause').textContent = '▶ Resume';
+}
+
+function timerTick(){
+  const now = Date.now();
+  const left = Math.max(0, Math.round((timerEnd - now)/1000));
+  timerRemaining = left;
+  timerUpdateUI();
+  if(left <= 0){
+    clearInterval(timerInterval);
+    timerInterval = null;
+    timerState = 'done';
+    timerSetStatus('Completed','status-done');
+    timerShowButtons(false, false, true);
+    timerOnComplete();
+  }
+}
+
+function timerStart(){
+  if(timerState === 'running') return;
+  if(timerState === 'idle' || timerState === 'done'){
+    timerRemaining = parseInt($('timer_minutes').value)*60 || 1800;
+    if(timerRemaining <= 0) return;
+  }
+  timerEnd = Date.now() + timerRemaining*1000;
+  timerState = 'running';
+  timerSetStatus('Running','status-running');
+  timerShowButtons(false, true, true);
+  $('btn_start').style.display = 'none';
+  $('btn_pause').textContent = '⏸ Pause';
+  timerInterval = setInterval(timerTick, 200);
+}
+
+function timerPause(){
+  if(timerState === 'running'){
+    clearInterval(timerInterval);
+    timerInterval = null;
+    timerRemaining = Math.max(0, Math.round((timerEnd - Date.now())/1000));
+    timerState = 'paused';
+    timerSetStatus('Paused','status-paused');
+    timerShowButtons(false, true, true);
+    $('btn_pause').textContent = '▶ Resume';
+    timerUpdateUI();
+    return;
+  }
+  if(timerState === 'paused'){
+    timerEnd = Date.now() + timerRemaining*1000;
+    timerState = 'running';
+    timerSetStatus('Running','status-running');
+    timerShowButtons(false, true, true);
+    $('btn_pause').textContent = '⏸ Pause';
+    timerInterval = setInterval(timerTick, 200);
+  }
+}
+
+function timerReset(){
+  clearInterval(timerInterval);
+  timerInterval = null;
+  timerState = 'idle';
+  timerRemaining = parseInt($('timer_minutes').value)*60 || 1800;
+  timerUpdateUI();
+  timerSetStatus('Ready','status-ready');
+  timerShowButtons(true, false, true);
+  $('timer_bar').style.width = '100%';
+}
+
+// ---- sound & notification ----
+function playAlarm(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const notes = [880, 660, 880, 660];
+    notes.forEach((freq, i)=>{
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      const t = ctx.currentTime + i*0.22;
+      gain.gain.setValueAtTime(0.35, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t+0.2);
+      osc.start(t);
+      osc.stop(t+0.2);
+    });
+  }catch(e){}
+}
+
+function timerOnComplete(){
+  playAlarm();
+  const sessionMinutes = Math.round(parseInt($('timer_minutes').value) || 30);
+  addDailySessionMinutes(sessionMinutes);
+  $('overlay_msg').textContent = 'Your ' + sessionMinutes + '-min session has ended.';
+  $('timer_overlay').classList.add('show');
+  if('Notification' in window && Notification.permission === 'granted'){
+    try{ new Notification('♠ Poker Session Complete', {body: sessionMinutes+' min session ended. Take a break!'}); }catch(e){}
+  }
+}
+$('overlay_dismiss').onclick = ()=>{
+  $('timer_overlay').classList.remove('show');
+};
+
+$('btn_start').onclick = timerStart;
+$('btn_pause').onclick = timerPause;
+$('btn_reset').onclick = timerReset;
+
+$('timer_minutes').addEventListener('input', ()=>{
+  if(timerState === 'idle' || timerState === 'done'){
+    timerRemaining = parseInt($('timer_minutes').value)*60 || 1800;
+    timerUpdateUI();
+  }
+});
+
+// ---- Daily Session Tracking ----
+const DAY_KEY = 'poker_session_date';
+const TOTAL_KEY = 'poker_session_minutes';
+
+function getDailyTotal(){
+  const today = new Date().toISOString().slice(0,10);
+  const saved = localStorage.getItem(DAY_KEY);
+  if(saved !== today){
+    localStorage.setItem(DAY_KEY, today);
+    localStorage.setItem(TOTAL_KEY, '0');
+    return 0;
+  }
+  return parseFloat(localStorage.getItem(TOTAL_KEY)) || 0;
+}
+
+function addDailySessionMinutes(mins){
+  const today = new Date().toISOString().slice(0,10);
+  const saved = localStorage.getItem(DAY_KEY);
+  let total = 0;
+  if(saved !== today){
+    localStorage.setItem(DAY_KEY, today);
+    total = mins;
+  } else {
+    total = (parseFloat(localStorage.getItem(TOTAL_KEY)) || 0) + mins;
+  }
+  localStorage.setItem(TOTAL_KEY, total.toString());
+  updateTodayDisplay(total);
+}
+
+function updateTodayDisplay(total){
+  const mins = total || getDailyTotal();
+  if(mins < 60){
+    $('today_total').textContent = mins + ' min';
+  } else {
+    const h = Math.floor(mins/60);
+    const m = Math.round(mins%60);
+    $('today_total').textContent = h + 'h ' + m + 'm';
+  }
+}
+
+// ---- init timer ----
+timerReset();
+updateTodayDisplay();
+
+// ---- request notification permission on first timer tab visit ----
+if('Notification' in window && Notification.permission === 'default'){
+  document.querySelector('.tab[data-v="timer"]').addEventListener('click', function firstClick(){
+    Notification.requestPermission();
+    this.removeEventListener('click', firstClick);
+  });
+}
+</script>
+</body>
+</html>
