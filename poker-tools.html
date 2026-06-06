@@ -73,24 +73,9 @@
   .today-card .big{background:linear-gradient(135deg,#1f2a35,#1a1f27);border-color:rgba(10,132,255,.35)}
   .today-card .big .lab{color:var(--blue)}
 
-  /* ---- Mini floating in-page timer ---- */
-  #mini_timer{display:none;position:fixed;top:24px;right:24px;z-index:99999;
-    text-align:center;cursor:grab;-webkit-user-select:none;user-select:none}
-  #mini_timer.show{display:block}
-  #mini_label{display:none;font-size:18px;font-weight:800;color:#ff453a;
-    margin-bottom:2px;text-shadow:0 2px 8px rgba(0,0,0,.6);letter-spacing:1px}
-  #mini_time{font-size:72px;font-weight:800;color:#30d158;
-    font-variant-numeric:tabular-nums;letter-spacing:3px;line-height:1;
-    white-space:nowrap;text-shadow:0 2px 16px rgba(0,0,0,.5);transition:color .3s}
-  #mini_time.warning{color:#ff9f0a}
-  #mini_time.critical{color:#ff453a;animation:pipPulse 1s ease-in-out infinite}
   @keyframes pipPulse{0%,100%{opacity:1}50%{opacity:.35}}
-  #mini_ok{display:none;margin-top:10px;padding:7px 32px;border-radius:12px;border:none;
-    background:#30d158;color:#08130a;font-size:15px;font-weight:700;cursor:pointer;
-    box-shadow:0 2px 8px rgba(0,0,0,.4)}
-  #mini_ok:hover{opacity:.85}
 
-  /* ---- Timer Overlay (fallback) ---- */
+  /* ---- Timer Overlay ---- */
   #timer_overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9999;
     align-items:center;justify-content:center}
   #timer_overlay.show{display:flex}
@@ -220,14 +205,7 @@
     </div>
   </div>
 
-  <!-- Mini floating in-page timer -->
-  <div id="mini_timer">
-    <div id="mini_label">时间到！</div>
-    <div id="mini_time">00:00</div>
-    <button id="mini_ok">OK</button>
-  </div>
-
-  <!-- Timer Completion Overlay (fallback) -->
+  <!-- Timer Completion Overlay -->
   <div id="timer_overlay">
     <div class="overlay-inner">
       <div class="icon">⏰</div>
@@ -355,7 +333,8 @@ let timerEnd = 0;          // timestamp ms
 let timerInterval = null;
 
 // Picture-in-Picture floating timer references
-let miniDragging = false, miniDX = 0, miniDY = 0;
+let pipWindow = null;
+let pipTimeEl = null;
 
 function timerFormatDisplay(sec){
   const m = Math.floor(sec/60), s = sec%60;
@@ -369,7 +348,7 @@ function timerUpdateUI(){
   const pct = totalSec > 0 ? (timerRemaining / totalSec) * 100 : 0;
   $('timer_bar').style.width = Math.max(0, Math.min(100, pct))+'%';
   updatePageTitle(display);
-  miniTimerUpdate();
+  updatePiP();
 }
 
 function timerSetStatus(label, cls){
@@ -412,66 +391,75 @@ function updatePageTitle(display){
   }
 }
 
-// ---- Mini floating in-page timer ----
-function miniTimerUpdate(){
-  const t = $('mini_time');
-  if(!t) return;
-  t.textContent = timerFormatDisplay(timerRemaining);
+// ---- Document Picture-in-Picture floating timer ----
+function buildPiPContent(pipDoc) {
+  pipDoc.documentElement.style.cssText = 'height:100%;';
+  pipDoc.body.style.cssText = 'margin:0;padding:0;background:transparent;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;';
+  const style = pipDoc.createElement('style');
+  style.textContent = `
+    @keyframes pipPulse{0%,100%{opacity:1}50%{opacity:.35}}
+    #pip_label{display:none;font-size:14px;font-weight:800;color:#ff453a;
+      text-shadow:0 2px 8px rgba(0,0,0,.8);letter-spacing:1px;margin-bottom:2px;text-align:center}
+    #pip_time{font-size:22vw;font-weight:800;color:#30d158;
+      font-variant-numeric:tabular-nums;letter-spacing:.02em;line-height:1;
+      white-space:nowrap;text-shadow:0 2px 20px rgba(0,0,0,.7);transition:color .3s;text-align:center}
+    #pip_time.warning{color:#ff9f0a}
+    #pip_time.critical{color:#ff453a;animation:pipPulse 1s ease-in-out infinite}
+    #pip_ok{display:none;margin-top:8px;padding:6px 28px;border-radius:10px;border:none;
+      background:#30d158;color:#08130a;font-size:14px;font-weight:700;cursor:pointer}
+    #pip_ok:hover{opacity:.85}
+  `;
+  pipDoc.head.appendChild(style);
+  const wrap = pipDoc.createElement('div');
+  wrap.style.cssText = 'text-align:center;';
+  wrap.innerHTML = '<div id="pip_label">时间到！</div><div id="pip_time">00:00</div><button id="pip_ok">OK</button>';
+  pipDoc.body.appendChild(wrap);
+  pipTimeEl = pipDoc.getElementById('pip_time');
+  pipDoc.getElementById('pip_ok').onclick = () => {
+    stopAlarm();
+    document.title = ORIG_TITLE;
+    $('timer_overlay').classList.remove('show');
+    if(pipWindow && !pipWindow.closed) pipWindow.close();
+    pipWindow = null; pipTimeEl = null;
+  };
+}
+
+function updatePiP() {
+  if(!pipWindow || pipWindow.closed || !pipTimeEl) return;
+  pipTimeEl.textContent = timerFormatDisplay(timerRemaining);
   const totalSec = parseInt($('timer_minutes').value)*60 || 1800;
   const pct = totalSec > 0 ? timerRemaining / totalSec : 0;
   let cls = '';
   if(timerState === 'done' || pct <= 0.10) cls = 'critical';
   else if(pct <= 0.25) cls = 'warning';
-  t.className = cls;
+  pipTimeEl.className = cls;
 }
 
-function miniTimerShow(){
-  $('mini_timer').classList.add('show');
-  miniTimerUpdate();
+async function openTimerPiP() {
+  if(!('documentPictureInPicture' in window)) return;
+  if(pipWindow && !pipWindow.closed){ updatePiP(); return; }
+  try {
+    pipWindow = await documentPictureInPicture.requestWindow({ width: 320, height: 160 });
+    buildPiPContent(pipWindow.document);
+    updatePiP();
+    pipWindow.addEventListener('pagehide', () => { pipWindow = null; pipTimeEl = null; });
+  } catch(e) { console.warn('PiP failed:', e); }
 }
 
-function miniTimerHide(){
-  $('mini_timer').classList.remove('show');
-  $('mini_label').style.display = 'none';
-  $('mini_ok').style.display = 'none';
-  $('mini_time').style.fontSize = '';
-  $('mini_time').className = '';
+function closeTimerPiP() {
+  if(pipWindow && !pipWindow.closed) pipWindow.close();
+  pipWindow = null; pipTimeEl = null;
 }
 
-function miniTimerDone(){
-  $('mini_label').style.display = 'block';
-  $('mini_ok').style.display = 'block';
-  $('mini_time').style.fontSize = '52px';
+function showPiPComplete() {
+  if(!pipWindow || pipWindow.closed) return;
+  const label = pipWindow.document.getElementById('pip_label');
+  const ok = pipWindow.document.getElementById('pip_ok');
+  const t = pipWindow.document.getElementById('pip_time');
+  if(label) label.style.display = 'block';
+  if(ok) ok.style.display = 'inline-block';
+  if(t) t.style.fontSize = '16vw';
 }
-
-$('mini_timer').addEventListener('mousedown', e => {
-  if(e.target.tagName === 'BUTTON') return;
-  miniDragging = true;
-  const el = $('mini_timer');
-  const rect = el.getBoundingClientRect();
-  miniDX = e.clientX - rect.left;
-  miniDY = e.clientY - rect.top;
-  el.style.cursor = 'grabbing';
-  e.preventDefault();
-});
-document.addEventListener('mousemove', e => {
-  if(!miniDragging) return;
-  const el = $('mini_timer');
-  el.style.right = 'auto';
-  el.style.bottom = 'auto';
-  el.style.left = Math.max(0, e.clientX - miniDX) + 'px';
-  el.style.top  = Math.max(0, e.clientY - miniDY) + 'px';
-});
-document.addEventListener('mouseup', () => {
-  if(miniDragging){ miniDragging = false; $('mini_timer').style.cursor = 'grab'; }
-});
-
-$('mini_ok').onclick = () => {
-  stopAlarm();
-  document.title = ORIG_TITLE;
-  $('timer_overlay').classList.remove('show');
-  miniTimerHide();
-};
 
 function timerStart(){
   if(timerState === 'running') return;
@@ -481,7 +469,7 @@ function timerStart(){
   }
   timerEnd = Date.now() + timerRemaining*1000;
   timerState = 'running';
-  miniTimerShow();
+  openTimerPiP();
   timerSetStatus('进行中','status-running');
   timerShowButtons(false, true, true);
   $('btn_start').style.display = 'none';
@@ -517,7 +505,7 @@ function timerReset(){
   clearInterval(timerInterval);
   timerInterval = null;
   timerState = 'idle';
-  miniTimerHide();
+  closeTimerPiP();
   timerRemaining = parseInt($('timer_minutes').value)*60 || 1800;
   timerUpdateUI();
   timerSetStatus('就绪','status-ready');
@@ -568,8 +556,8 @@ function stopAlarm(){
 }
 
 function timerOnComplete(){
-  miniTimerUpdate();
-  miniTimerDone();
+  updatePiP();
+  showPiPComplete();
   document.title = '⏰ 时间到！ ♠ 扑克工具台';
   startAlarm();
   const sessionMinutes = Math.round(parseInt($('timer_minutes').value) || 30);
