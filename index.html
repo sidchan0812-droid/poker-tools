@@ -439,9 +439,11 @@ function updatePageTitle(display){
 // ---- Document Picture-in-Picture floating timer ----
 function buildPiPContent(pipDoc) {
   pipDoc.documentElement.style.cssText = 'height:100%;';
-  pipDoc.body.style.cssText = 'margin:0;padding:0;background:transparent;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;';
+  pipDoc.body.style.cssText = 'margin:0;padding:0;height:100%;';
   const style = pipDoc.createElement('style');
   style.textContent = `
+    html,body{background:#000!important;margin:0;padding:0;height:100%}
+    body{display:flex;align-items:center;justify-content:center;overflow:hidden}
     @keyframes pipPulse{0%,100%{opacity:1}50%{opacity:.35}}
     #pip_label{display:none;font-size:14px;font-weight:800;color:#ff453a;
       text-shadow:0 2px 8px rgba(0,0,0,.8);letter-spacing:1px;margin-bottom:2px;text-align:center}
@@ -484,7 +486,7 @@ async function openTimerPiP() {
   if(!('documentPictureInPicture' in window)) return;
   if(pipWindow && !pipWindow.closed){ updatePiP(); return; }
   try {
-    pipWindow = await documentPictureInPicture.requestWindow({ width: 320, height: 160 });
+    pipWindow = await documentPictureInPicture.requestWindow({ width: 200, height: 80 });
     buildPiPContent(pipWindow.document);
     updatePiP();
     pipWindow.addEventListener('pagehide', () => { pipWindow = null; pipTimeEl = null; });
