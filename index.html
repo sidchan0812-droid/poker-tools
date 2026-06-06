@@ -445,26 +445,55 @@ function updatePageTitle(display){
 // Builds the minimal content shown inside the floating window: ONLY the digits.
 function buildPiPContent(win){
   const doc = win.document;
-  // Inject styles into the PiP document
   const style = doc.createElement('style');
   style.textContent = `
     html,body{margin:0;padding:0;height:100%;width:100%;background:#0f1216;overflow:hidden}
-    body{display:flex;align-items:center;justify-content:center;
+    body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
       -webkit-user-select:none;user-select:none;cursor:default}
+    #pipLabel{display:none;font-size:5vw;font-weight:800;color:#ff453a;letter-spacing:1px;margin-bottom:2px}
     #pipTime{font-weight:800;font-variant-numeric:tabular-nums;line-height:1;
-      letter-spacing:2px;color:#30d158;transition:color .3s;
+      letter-spacing:2px;color:#30d158;transition:color .3s,font-size .3s;
       font-size:18vw;white-space:nowrap}
     #pipTime.warning{color:#ff9f0a}
     #pipTime.critical{color:#ff453a;animation:pipPulse 1s ease-in-out infinite}
     @keyframes pipPulse{0%,100%{opacity:1}50%{opacity:.35}}
+    #pipDismiss{display:none;margin-top:4px;padding:5px 24px;border-radius:10px;border:none;
+      background:#30d158;color:#08130a;font-size:3.5vw;font-weight:700;cursor:pointer}
+    #pipDismiss:hover{opacity:.85}
   `;
   doc.head.appendChild(style);
+  const label = doc.createElement('div');
+  label.id = 'pipLabel';
+  label.textContent = "TIME'S UP!";
+  doc.body.appendChild(label);
   const el = doc.createElement('div');
   el.id = 'pipTime';
   el.textContent = timerFormatDisplay(timerRemaining);
   doc.body.appendChild(el);
+  const btn = doc.createElement('button');
+  btn.id = 'pipDismiss';
+  btn.textContent = 'OK';
+  btn.onclick = () => {
+    stopAlarm();
+    document.title = ORIG_TITLE;
+    $('timer_overlay').classList.remove('show');
+    if(pipWindow && !pipWindow.closed) pipWindow.close();
+  };
+  doc.body.appendChild(btn);
   return el;
+}
+
+// Show "Time's Up" state inside the floating PiP window
+function showPiPComplete(){
+  if(!pipWindow || pipWindow.closed) return;
+  const doc = pipWindow.document;
+  const label = doc.getElementById('pipLabel');
+  const btn = doc.getElementById('pipDismiss');
+  if(label) label.style.display = 'block';
+  if(btn) btn.style.display = 'block';
+  // Shrink time font slightly to make room
+  if(pipTimeEl) pipTimeEl.style.fontSize = '11vw';
 }
 
 // Push the current time/colour into the floating window. Called every tick.
@@ -620,13 +649,17 @@ function stopAlarm(){
 }
 
 function timerOnComplete(){
-  updatePiP();   // show 00:00 in red inside the floating window
+  updatePiP();       // show 00:00 in red inside the floating window
+  showPiPComplete(); // show label + dismiss button inside PiP
   document.title = '⏰ Time\'s Up! ♠ Poker Toolkit';
   startAlarm();
   const sessionMinutes = Math.round(parseInt($('timer_minutes').value) || 30);
   addDailySessionMinutes(sessionMinutes);
   $('overlay_msg').textContent = 'Your ' + sessionMinutes + '-min session has ended.';
-  $('timer_overlay').classList.add('show');
+  // Only show page overlay if PiP window is not open
+  if(!pipWindow || pipWindow.closed){
+    $('timer_overlay').classList.add('show');
+  }
   if('Notification' in window && Notification.permission === 'granted'){
     try{ new Notification('♠ Poker Session Complete', {body: sessionMinutes+' min session ended. Take a break!'}); }catch(e){}
   }
