@@ -76,10 +76,24 @@
   .today-card .big{background:linear-gradient(135deg,#1f2a35,#1a1f27);border-color:rgba(10,132,255,.35)}
   .today-card .big .lab{color:var(--blue)}
 
-  /* ---- Floating timer trigger button ----
-     (the timer displays in a borderless Picture-in-Picture window) */
+  /* ---- Mini floating in-page timer ---- */
+  #mini_timer{display:none;position:fixed;top:24px;right:24px;z-index:99999;
+    text-align:center;cursor:grab;-webkit-user-select:none;user-select:none}
+  #mini_timer.show{display:block}
+  #mini_label{display:none;font-size:18px;font-weight:800;color:#ff453a;
+    margin-bottom:2px;text-shadow:0 2px 8px rgba(0,0,0,.6);letter-spacing:1px}
+  #mini_time{font-size:72px;font-weight:800;color:#30d158;
+    font-variant-numeric:tabular-nums;letter-spacing:3px;line-height:1;
+    white-space:nowrap;text-shadow:0 2px 16px rgba(0,0,0,.5);transition:color .3s}
+  #mini_time.warning{color:#ff9f0a}
+  #mini_time.critical{color:#ff453a;animation:pipPulse 1s ease-in-out infinite}
+  @keyframes pipPulse{0%,100%{opacity:1}50%{opacity:.35}}
+  #mini_ok{display:none;margin-top:10px;padding:7px 32px;border-radius:12px;border:none;
+    background:#30d158;color:#08130a;font-size:15px;font-weight:700;cursor:pointer;
+    box-shadow:0 2px 8px rgba(0,0,0,.4)}
+  #mini_ok:hover{opacity:.85}
 
-  /* ---- Timer Overlay ---- */
+  /* ---- Timer Overlay (fallback when mini timer hidden) ---- */
   #timer_overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9999;
     align-items:center;justify-content:center}
   #timer_overlay.show{display:flex}
@@ -204,11 +218,6 @@
         <div class="btn btn-pause" id="btn_pause" style="display:none">⏸ Pause</div>
         <div class="btn btn-reset" id="btn_reset">⟳ Reset</div>
       </div>
-      <div style="margin-top:14px;text-align:center">
-        <div class="btn btn-start" id="btn_open_popup" style="display:inline-flex;padding:8px 24px;align-items:center;gap:6px;font-size:13px;background:var(--blue);border-color:var(--blue);color:#fff">
-          ⬜ Pop-out floating timer
-        </div>
-      </div>
     </div>
 
     <div class="card today-card">
@@ -218,7 +227,14 @@
     </div>
   </div>
 
-  <!-- Timer Completion Overlay -->
+  <!-- Mini floating in-page timer -->
+  <div id="mini_timer">
+    <div id="mini_label">TIME'S UP!</div>
+    <div id="mini_time">00:00</div>
+    <button id="mini_ok">OK</button>
+  </div>
+
+  <!-- Timer Completion Overlay (fallback) -->
   <div id="timer_overlay">
     <div class="overlay-inner">
       <div class="icon">⏰</div>
@@ -380,9 +396,8 @@ let timerRemaining = 1800; // seconds
 let timerEnd = 0;          // timestamp ms
 let timerInterval = null;
 
-// Picture-in-Picture floating timer references
-let pipWindow = null;   // the Document PiP window
-let pipTimeEl = null;   // the <div> showing the digits inside the PiP window
+// Mini floating timer drag state
+let miniDragging = false, miniDX = 0, miniDY = 0;
 
 function timerFormatDisplay(sec){
   const m = Math.floor(sec/60), s = sec%60;
@@ -397,8 +412,8 @@ function timerUpdateUI(){
   $('timer_bar').style.width = Math.max(0, Math.min(100, pct))+'%';
   // Update page title
   updatePageTitle(display);
-  // Update floating PiP timer if open
-  updatePiP();
+  // Update mini floating timer
+  miniTimerUpdate();
 }
 
 function timerSetStatus(label, cls){
@@ -441,110 +456,67 @@ function updatePageTitle(display){
   }
 }
 
-// ---- Floating timer (Document Picture-in-Picture) ----
-// Builds the minimal content shown inside the floating window: ONLY the digits.
-function buildPiPContent(win){
-  const doc = win.document;
-  const style = doc.createElement('style');
-  style.textContent = `
-    html,body{margin:0;padding:0;height:100%;width:100%;background:transparent;overflow:hidden}
-    body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-      -webkit-user-select:none;user-select:none;cursor:default}
-    #pipLabel{display:none;font-size:5vw;font-weight:800;color:#ff453a;letter-spacing:1px;margin-bottom:2px;
-      text-shadow:0 0 8px rgba(0,0,0,.8)}
-    #pipTime{font-weight:800;font-variant-numeric:tabular-nums;line-height:1;
-      letter-spacing:2px;color:#30d158;transition:color .3s,font-size .3s;
-      font-size:22vw;white-space:nowrap;text-shadow:0 0 12px rgba(0,0,0,.6)}
-    #pipTime.warning{color:#ff9f0a}
-    #pipTime.critical{color:#ff453a;animation:pipPulse 1s ease-in-out infinite}
-    @keyframes pipPulse{0%,100%{opacity:1}50%{opacity:.35}}
-    #pipDismiss{display:none;margin-top:4px;padding:5px 24px;border-radius:10px;border:none;
-      background:#30d158;color:#08130a;font-size:3.5vw;font-weight:700;cursor:pointer}
-    #pipDismiss:hover{opacity:.85}
-  `;
-  doc.head.appendChild(style);
-  const label = doc.createElement('div');
-  label.id = 'pipLabel';
-  label.textContent = "TIME'S UP!";
-  doc.body.appendChild(label);
-  const el = doc.createElement('div');
-  el.id = 'pipTime';
-  el.textContent = timerFormatDisplay(timerRemaining);
-  doc.body.appendChild(el);
-  const btn = doc.createElement('button');
-  btn.id = 'pipDismiss';
-  btn.textContent = 'OK';
-  btn.onclick = () => {
-    stopAlarm();
-    document.title = ORIG_TITLE;
-    $('timer_overlay').classList.remove('show');
-    if(pipWindow && !pipWindow.closed) pipWindow.close();
-  };
-  doc.body.appendChild(btn);
-  return el;
-}
-
-// Show "Time's Up" state inside the floating PiP window
-function showPiPComplete(){
-  if(!pipWindow || pipWindow.closed) return;
-  const doc = pipWindow.document;
-  const label = doc.getElementById('pipLabel');
-  const btn = doc.getElementById('pipDismiss');
-  if(label) label.style.display = 'block';
-  if(btn) btn.style.display = 'block';
-  // Shrink time font slightly to make room
-  if(pipTimeEl) pipTimeEl.style.fontSize = '11vw';
-}
-
-// Push the current time/colour into the floating window. Called every tick.
-function updatePiP(){
-  if(!pipWindow || pipWindow.closed || !pipTimeEl) return;
-  pipTimeEl.textContent = timerFormatDisplay(timerRemaining);
+// ---- Mini floating in-page timer ----
+function miniTimerUpdate(){
+  const t = $('mini_time');
+  if(!t) return;
+  t.textContent = timerFormatDisplay(timerRemaining);
   const totalSec = parseInt($('timer_minutes').value)*60 || 1800;
   const pct = totalSec > 0 ? timerRemaining / totalSec : 0;
   let cls = '';
   if(timerState === 'done' || pct <= 0.10) cls = 'critical';
   else if(pct <= 0.25) cls = 'warning';
-  pipTimeEl.className = cls;
+  t.className = cls;
 }
 
-// Open the floating PiP window. Must be triggered by a user gesture (button click).
-async function openTimerPiP(){
-  // Already open? Just refresh its contents.
-  if(pipWindow && !pipWindow.closed){
-    updatePiP();
-    try{ pipWindow.focus(); }catch(e){}
-    return;
-  }
-  if(!('documentPictureInPicture' in window)){
-    // Browser doesn't support Document PiP (e.g. Safari/Firefox).
-    $('btn_open_popup').textContent = '⚠ Use Chrome/Edge for pop-out';
-    setTimeout(()=>{ $('btn_open_popup').textContent = '⬜ Pop-out floating timer'; }, 3000);
-    return;
-  }
-  try{
-    pipWindow = await documentPictureInPicture.requestWindow({ width: 240, height: 120 });
-    pipTimeEl = buildPiPContent(pipWindow);
-    updatePiP();
-    $('btn_open_popup').textContent = '✓ Floating timer open';
-    // When the user closes the floating window, reset our references.
-    pipWindow.addEventListener('pagehide', ()=>{
-      pipWindow = null;
-      pipTimeEl = null;
-      $('btn_open_popup').textContent = '⬜ Pop-out floating timer';
-    });
-  }catch(e){
-    pipWindow = null;
-    pipTimeEl = null;
-  }
+function miniTimerShow(){
+  $('mini_timer').classList.add('show');
+  miniTimerUpdate();
 }
 
-function closeTimerPiP(){
-  try{ if(pipWindow && !pipWindow.closed) pipWindow.close(); }catch(e){}
-  pipWindow = null;
-  pipTimeEl = null;
+function miniTimerHide(){
+  $('mini_timer').classList.remove('show');
+  $('mini_label').style.display = 'none';
+  $('mini_ok').style.display = 'none';
+  $('mini_time').style.fontSize = '';
+  $('mini_time').className = '';
 }
+
+function miniTimerDone(){
+  $('mini_label').style.display = 'block';
+  $('mini_ok').style.display = 'block';
+  $('mini_time').style.fontSize = '52px';
+}
+
+// Drag support for mini timer
+$('mini_timer').addEventListener('mousedown', e => {
+  if(e.target.tagName === 'BUTTON') return;
+  miniDragging = true;
+  const el = $('mini_timer');
+  const rect = el.getBoundingClientRect();
+  miniDX = e.clientX - rect.left;
+  miniDY = e.clientY - rect.top;
+  el.style.cursor = 'grabbing';
+  e.preventDefault();
+});
+document.addEventListener('mousemove', e => {
+  if(!miniDragging) return;
+  const el = $('mini_timer');
+  el.style.right = 'auto';
+  el.style.bottom = 'auto';
+  el.style.left = Math.max(0, e.clientX - miniDX) + 'px';
+  el.style.top  = Math.max(0, e.clientY - miniDY) + 'px';
+});
+document.addEventListener('mouseup', () => {
+  if(miniDragging){ miniDragging = false; $('mini_timer').style.cursor = 'grab'; }
+});
+
+$('mini_ok').onclick = () => {
+  stopAlarm();
+  document.title = ORIG_TITLE;
+  $('timer_overlay').classList.remove('show');
+  miniTimerHide();
+};
 
 function timerStart(){
   if(timerState === 'running') return;
@@ -554,10 +526,7 @@ function timerStart(){
   }
   timerEnd = Date.now() + timerRemaining*1000;
   timerState = 'running';
-  // Auto open the floating timer (this runs inside the Start button gesture)
-  if (!pipWindow || pipWindow.closed) {
-    openTimerPiP();
-  }
+  miniTimerShow();
   timerSetStatus('Running','status-running');
   timerShowButtons(false, true, true);
   $('btn_start').style.display = 'none';
@@ -593,19 +562,13 @@ function timerReset(){
   clearInterval(timerInterval);
   timerInterval = null;
   timerState = 'idle';
-  closeTimerPiP();
+  miniTimerHide();
   timerRemaining = parseInt($('timer_minutes').value)*60 || 1800;
   timerUpdateUI();
   timerSetStatus('Ready','status-ready');
   timerShowButtons(true, false, true);
   $('timer_bar').style.width = '100%';
-  $('btn_open_popup').textContent = '⬜ Pop-out floating timer';
 }
-
-// "Pop-out floating timer" button
-$('btn_open_popup').onclick = function() {
-  openTimerPiP();
-};
 
 // ---- persistent alarm (loops until dismissed) ----
 let alarmInterval = null;
@@ -650,17 +613,13 @@ function stopAlarm(){
 }
 
 function timerOnComplete(){
-  updatePiP();       // show 00:00 in red inside the floating window
-  showPiPComplete(); // show label + dismiss button inside PiP
+  miniTimerUpdate();
+  miniTimerDone();
   document.title = '⏰ Time\'s Up! ♠ Poker Toolkit';
   startAlarm();
   const sessionMinutes = Math.round(parseInt($('timer_minutes').value) || 30);
   addDailySessionMinutes(sessionMinutes);
   $('overlay_msg').textContent = 'Your ' + sessionMinutes + '-min session has ended.';
-  // Only show page overlay if PiP window is not open
-  if(!pipWindow || pipWindow.closed){
-    $('timer_overlay').classList.add('show');
-  }
   if('Notification' in window && Notification.permission === 'granted'){
     try{ new Notification('♠ Poker Session Complete', {body: sessionMinutes+' min session ended. Take a break!'}); }catch(e){}
   }
