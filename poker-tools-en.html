@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Poker Toolkit · Bayesian Win Rate & Bankroll Manager & Session Timer</title>
+<title>Poker Toolkit · Bayesian Win Rate & Bankroll Manager</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root{
     --bg:#0f1216; --card:#1a1f27; --card2:#222933; --line:#2c333f;
@@ -44,11 +45,7 @@
   tr.cur{background:rgba(48,209,88,.12)}
   .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px}
   .muted{color:var(--muted);font-size:12px;margin-top:6px}
-  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px}
-  .legend span{display:inline-flex;align-items:center;gap:6px}
-  .legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
-  .chartbox{position:relative;width:100%}
-  canvas{width:100%;height:auto;display:block}
+  canvas{margin-top:10px}
   .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:24px;line-height:1.7}
 
   /* ---- Timer ---- */
@@ -98,7 +95,7 @@
 <div class="wrap">
   <header>
     <h1>♠ Poker Toolkit</h1>
-    <p>Bayesian Win Rate Analysis · Aggressive Bankroll Management · Session Timer</p>
+    <p>Bayesian Win Rate Analysis · Aggressive Bankroll Management — enter numbers, get instant results</p>
   </header>
 
   <div class="tabs">
@@ -107,6 +104,7 @@
     <div class="tab" data-v="timer">⏱ Session Timer</div>
   </div>
 
+  <!-- ============ Win Rate Calculator ============ -->
   <div class="view active" id="calc">
     <div class="card">
       <h2>① Inputs</h2>
@@ -140,26 +138,21 @@
 
     <div class="card">
       <h2>③ Distribution Curves</h2>
-      <div class="chartbox"><canvas id="chart"></canvas></div>
-      <div class="legend">
-        <span><i style="background:#0a84ff"></i>Population</span>
-        <span><i style="background:#ffd60a"></i>Observed</span>
-        <span><i style="background:#30d158"></i>Posterior (true)</span>
-      </div>
-      <div class="muted">The further right the green curve sits, the stronger you are.</div>
+      <canvas id="chart" height="220"></canvas>
+      <div class="muted">Blue = population of players, Yellow = your observed sample, Green = posterior (true estimate). The further right the green curve sits, the stronger you are.</div>
     </div>
   </div>
 
+  <!-- ============ Bankroll Manager ============ -->
   <div class="view" id="brm">
     <div class="card">
       <h2>① Inputs</h2>
       <div class="grid">
-        <div class="field"><label>Base Stake (USD)</label><input id="base" type="number" step="1" value="0"></div>
-        <div class="field"><label>FX Rate (USD/CNY)</label><input id="fx" type="number" step="0.01" value="0"></div>
-        <div class="field"><label>Deposited Bankroll (USD)</label><input id="dep" type="number" step="1" value="0"></div>
-        <div class="field"><label>Current Bankroll (USD) — for level check</label><input id="cur" type="number" step="1" value="0"></div>
+        <div class="field"><label>Base Stake (USD)</label><input id="base" type="number" step="1" value="100"></div>
+        <div class="field"><label>FX Rate (USD/CNY)</label><input id="fx" type="number" step="0.01" value="6.84"></div>
+        <div class="field"><label>Deposited Bankroll (USD)</label><input id="dep" type="number" step="1" value="500"></div>
+        <div class="field"><label>Current Bankroll (USD) — for level check</label><input id="cur" type="number" step="1" value="2875"></div>
       </div>
-      <div class="muted">All values are saved locally in your browser. Refresh or come back later — they stay as you left them.</div>
     </div>
 
     <div class="card">
@@ -189,7 +182,7 @@
     </div>
   </div>
 
-  <!-- ========== TAB 3: SESSION TIMER ========== -->
+    <!-- ========== TAB 3: SESSION TIMER ========== -->
   <div class="view" id="timer">
     <div class="card">
       <h2>⏱ Session Timer</h2>
@@ -235,27 +228,27 @@
 </div>
 
 <script>
-const $=id=>document.getElementById(id);
-const num=id=>parseFloat($(id).value)||0;
-const fmtUSD=v=>'$'+Math.round(v).toLocaleString('en-US');
-const fmtCNY=v=>'¥'+Math.round(v).toLocaleString('en-US');
-
-// ---- Tab switching ----
+// ---------- tabs ----------
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
-  t.classList.add('active'); $(t.dataset.v).classList.add('active');
-  if(t.dataset.v==='calc') drawChart();
+  t.classList.add('active'); document.getElementById(t.dataset.v).classList.add('active');
+  if(t.dataset.v==='calc') setTimeout(()=>chart&&chart.resize(),50);
 });
 
-// ---- Bayesian Win Rate ----
+// ---------- math ----------
+const $=id=>document.getElementById(id);
+const num=id=>parseFloat($(id).value)||0;
 function erf(x){const s=x<0?-1:1;x=Math.abs(x);
   const a1=.254829592,a2=-.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=.3275911;
   const t=1/(1+p*x);const y=1-((((a5*t+a4)*t+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);return s*y;}
 const normCdf=(x,mu,sd)=>0.5*(1+erf((x-mu)/(sd*Math.SQRT2)));
 const normPdf=(x,mu,sd)=>Math.exp(-((x-mu)**2)/(2*sd*sd))/(sd*Math.sqrt(2*Math.PI));
+const fmtUSD=v=>'$'+Math.round(v).toLocaleString('en-US');
+const fmtCNY=v=>'¥'+Math.round(v).toLocaleString('en-US');
 
-let cache={};
+// ---------- calculator ----------
+let chart=null;
 function renderCalc(){
   const wr=num('wr'), hands=num('hands'), popMean=num('popmean'), popSd=num('popsd');
   const sd = $('sdtype').value==='custom' ? num('sdcustom') : parseFloat($('sdtype').value);
@@ -264,72 +257,32 @@ function renderCalc(){
   const post = w*wr + (1-w)*popMean;
   const postSe = se*Math.sqrt(w);
   const better = normCdf(post, popMean, popSd);
+  const lo=post-postSe, hi=post+postSe;
+
   $('o_post').textContent = post.toFixed(1)+' ± '+postSe.toFixed(1)+' bb/100';
   $('o_better').textContent = (better*100).toFixed(1)+'% of players';
-  $('o_ci').textContent = (post-postSe).toFixed(1)+' to '+(post+postSe).toFixed(1)+' bb/100';
+  $('o_ci').textContent = lo.toFixed(1)+' to '+hi.toFixed(1)+' bb/100';
   $('o_se').textContent = postSe.toFixed(2)+' bb/100';
   $('o_w').textContent = (w*100).toFixed(1)+'%';
-  cache={wr,se,popMean,popSd,post,postSe};
-  drawChart();
-}
 
-// ---- lightweight canvas chart ----
-function drawChart(){
-  const cv=$('chart'); if(!cv.clientWidth) return;
-  const dpr=window.devicePixelRatio||1;
-  const W=cv.clientWidth, H=Math.max(200,Math.round(W*0.5));
-  cv.width=W*dpr; cv.height=H*dpr; cv.style.height=H+'px';
-  const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
-  const padL=10,padR=10,padT=10,padB=26;
-  const xmin=-30,xmax=30, plotW=W-padL-padR, plotH=H-padT-padB;
-  const series=[
-    {mu:cache.popMean,sd:cache.popSd,c:'#0a84ff'},
-    {mu:cache.wr,sd:cache.se,c:'#ffd60a'},
-    {mu:cache.post,sd:cache.postSe,c:'#30d158'},
+  const lab=[],pop=[],obs=[],pos=[];
+  for(let i=0;i<=120;i++){const x=-30+i*0.5;lab.push(x.toFixed(0));
+    pop.push(normPdf(x,popMean,popSd)); obs.push(normPdf(x,wr,se)); pos.push(normPdf(x,post,postSe));}
+  const ds=[
+    {label:'Population',data:pop,borderColor:'#0a84ff',backgroundColor:'rgba(10,132,255,.08)',fill:true,pointRadius:0,tension:.3,borderWidth:2},
+    {label:'Observed',data:obs,borderColor:'#ffd60a',backgroundColor:'rgba(255,214,10,.06)',fill:true,pointRadius:0,tension:.3,borderWidth:2},
+    {label:'Posterior (true)',data:pos,borderColor:'#30d158',backgroundColor:'rgba(48,209,88,.10)',fill:true,pointRadius:0,tension:.3,borderWidth:2.5},
   ];
-  const N=240; let ymax=0;
-  series.forEach(s=>{s.pts=[];for(let i=0;i<=N;i++){const x=xmin+(xmax-xmin)*i/N;const y=normPdf(x,s.mu,s.sd);s.pts.push([x,y]);if(y>ymax)ymax=y;}});
-  ymax*=1.1; if(ymax<=0)ymax=1;
-  const X=x=>padL+(x-xmin)/(xmax-xmin)*plotW;
-  const Y=y=>padT+plotH-(y/ymax)*plotH;
-  // grid + x axis labels
-  ctx.strokeStyle='#222933'; ctx.fillStyle='#9aa4b2'; ctx.font='11px sans-serif'; ctx.textAlign='center';
-  for(let gx=-30;gx<=30;gx+=10){ctx.beginPath();ctx.moveTo(X(gx),padT);ctx.lineTo(X(gx),padT+plotH);ctx.stroke();ctx.fillText(gx,X(gx),H-8);}
-  ctx.beginPath();ctx.moveTo(padL,padT+plotH);ctx.lineTo(W-padR,padT+plotH);ctx.strokeStyle='#2c333f';ctx.stroke();
-  // curves
-  series.forEach(s=>{
-    ctx.beginPath();
-    s.pts.forEach((p,i)=>{const px=X(p[0]),py=Y(p[1]);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});
-    ctx.lineWidth=2.4; ctx.strokeStyle=s.c; ctx.stroke();
-    ctx.lineTo(X(xmax),Y(0)); ctx.lineTo(X(xmin),Y(0)); ctx.closePath();
-    ctx.globalAlpha=.10; ctx.fillStyle=s.c; ctx.fill(); ctx.globalAlpha=1;
-  });
-}
-window.addEventListener('resize',drawChart);
-
-['wr','hands','sdtype','sdcustom','popmean','popsd'].forEach(id=>$(id).addEventListener('input',renderCalc));
-
-// ---- Bankroll Manager (with localStorage persistence) ----
-const BRM_KEY = 'poker_bankroll_data';
-
-function loadBrmData(){
-  const raw = localStorage.getItem(BRM_KEY);
-  if(raw){
-    try{
-      const d = JSON.parse(raw);
-      ['base','fx','dep','cur'].forEach(k=>{
-        if(d[k]!==undefined && d[k]!==null) $(k).value = d[k];
-      });
-    }catch(e){}
-  }
+  if(!chart){
+    chart=new Chart($('chart'),{type:'line',data:{labels:lab,datasets:ds},
+      options:{responsive:true,interaction:{mode:'index',intersect:false},
+        scales:{x:{ticks:{color:'#9aa4b2',maxTicksLimit:13},grid:{color:'#222933'},title:{display:true,text:'bb/100',color:'#9aa4b2'}},
+                y:{ticks:{display:false},grid:{color:'#222933'}}},
+        plugins:{legend:{labels:{color:'#e8ebf0'}}}}});
+  }else{chart.data.labels=lab;chart.data.datasets=ds;chart.update('none');}
 }
 
-function saveBrmData(){
-  const d = {};
-  ['base','fx','dep','cur'].forEach(k=>{ d[k] = num(k); });
-  localStorage.setItem(BRM_KEY, JSON.stringify(d));
-}
-
+// ---------- bankroll ----------
 const protocols=[
   {name:'AGGRESSIVE SHOT',act:'2B',hi:28.75,lo:18.75,c:'var(--purple)'},
   {name:'DEFENSIVE 1',act:'B',hi:18.75,lo:13.75,c:'var(--blue)'},
@@ -363,16 +316,19 @@ function renderBrm(){
     const action = av===null ? 'STOP' : ('Play '+fmtUSD(av)+(p.act==='B (recover)'?' (recover)':''));
     return `<tr class="${inBand?'cur':''}">
       <td class="lvl"><span class="pill" style="background:${p.c}22;color:${p.c}">${p.name}</span>${inBand?' ◀ NOW':''}</td>
-      <td>${action}</td><td>${range}</td></tr>`;
+      <td>${action}</td>
+      <td>${range}</td></tr>`;
   }).join('');
   $('stopbody').innerHTML=stops.map(s=>{
-    return `<tr><td class="lvl">${fmtUSD(s.stake*B)} table · move-down line<div class="muted" style="margin:0">${s.note}</div></td><td style="color:var(--red);font-weight:700">${fmtUSD(s.thresh*B)}</td></tr>`;
+    const tableBuyin=fmtUSD(s.stake*B);
+    return `<tr><td class="lvl">${tableBuyin} table · move-down line<div class="muted" style="margin:0">${s.note}</div></td><td style="color:var(--red);font-weight:700">${fmtUSD(s.thresh*B)}</td></tr>`;
   }).join('');
-  saveBrmData();
 }
+
+// ---------- bind ----------
+['wr','hands','sdtype','sdcustom','popmean','popsd'].forEach(id=>$(id).addEventListener('input',renderCalc));
 ['base','fx','dep','cur'].forEach(id=>$(id).addEventListener('input',renderBrm));
-loadBrmData();
-renderBrm();
+renderCalc(); renderBrm();
 
 // ======================== SESSION TIMER ========================
 let timerState = 'idle';   // idle | running | paused | done

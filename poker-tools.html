@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Poker Toolkit · Bayesian Win Rate & Bankroll Manager & Session Timer</title>
+<title>扑克工具台 · 贝叶斯胜率 & 资金管理</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root{
     --bg:#0f1216; --card:#1a1f27; --card2:#222933; --line:#2c333f;
@@ -11,7 +12,7 @@
     --purple:#bf5af2; --orange:#ff9f0a; --red:#ff453a; --yellow:#ffd60a;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
     background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
   .wrap{max-width:980px;margin:0 auto;padding:20px 16px 60px}
   header h1{font-size:22px;font-weight:700}
@@ -44,11 +45,7 @@
   tr.cur{background:rgba(48,209,88,.12)}
   .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px}
   .muted{color:var(--muted);font-size:12px;margin-top:6px}
-  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px}
-  .legend span{display:inline-flex;align-items:center;gap:6px}
-  .legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
-  .chartbox{position:relative;width:100%}
-  canvas{width:100%;height:auto;display:block}
+  canvas{margin-top:10px}
   .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:24px;line-height:1.7}
 
   /* ---- Timer ---- */
@@ -97,124 +94,120 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>♠ Poker Toolkit</h1>
-    <p>Bayesian Win Rate Analysis · Aggressive Bankroll Management · Session Timer</p>
+    <h1>♠ 扑克工具台</h1>
+    <p>贝叶斯胜率分析 · 激进资金管理 — 输入数字，自动计算</p>
   </header>
 
   <div class="tabs">
-    <div class="tab active" data-v="calc">Bayesian Win Rate</div>
-    <div class="tab" data-v="brm">Bankroll Manager</div>
-    <div class="tab" data-v="timer">⏱ Session Timer</div>
+    <div class="tab active" data-v="calc">贝叶斯胜率计算器</div>
+    <div class="tab" data-v="brm">资金管理 (Bankroll)</div>
+    <div class="tab" data-v="timer">⏱ 计时器</div>
   </div>
 
+  <!-- ============ 胜率计算器 ============ -->
   <div class="view active" id="calc">
     <div class="card">
-      <h2>① Inputs</h2>
+      <h2>① 输入参数</h2>
       <div class="grid">
-        <div class="field"><label>Observed Win Rate (bb/100)</label><input id="wr" type="number" step="0.1" value="-3"></div>
-        <div class="field"><label>Hands Played</label><input id="hands" type="number" step="1000" value="50000"></div>
-        <div class="field"><label>Standard Deviation</label>
+        <div class="field"><label>观测胜率 Win Rate (bb/100)</label><input id="wr" type="number" step="0.1" value="-3"></div>
+        <div class="field"><label>已打手数 Hands</label><input id="hands" type="number" step="1000" value="50000"></div>
+        <div class="field"><label>标准差类型 Std Dev</label>
           <select id="sdtype">
             <option value="160">HU NLHE (160)</option>
             <option value="95" selected>Online 6-Max NLHE (95)</option>
             <option value="147">Live Fullring NLHE (147)</option>
-            <option value="custom">Custom…</option>
+            <option value="custom">自定义 Custom…</option>
           </select>
         </div>
-        <div class="field"><label>Custom Std Dev (used only when "Custom")</label><input id="sdcustom" type="number" step="0.01" value="50.89"></div>
-        <div class="field"><label>Population Mean / Rake (bb/100)</label><input id="popmean" type="number" step="0.01" value="-5.58"></div>
-        <div class="field"><label>Population Spread (bb/100)</label><input id="popsd" type="number" step="0.1" value="8"></div>
+        <div class="field"><label>自定义标准差 (仅自定义时生效)</label><input id="sdcustom" type="number" step="0.01" value="50.89"></div>
+        <div class="field"><label>总体均值 Rake / Population Mean (bb/100)</label><input id="popmean" type="number" step="0.01" value="-5.58"></div>
+        <div class="field"><label>总体波动 Population Spread (bb/100)</label><input id="popsd" type="number" step="0.1" value="8"></div>
       </div>
-      <div class="muted">How it works: your observed win rate and the population mean are blended by their precision, giving your "true" posterior win rate. More hands and lower variance push the estimate toward your observed results.</div>
+      <div class="muted">说明：用观测胜率与总体均值按各自精度加权，得出你的“真实”后验胜率。手数越多、波动越小，越偏向你的实测值。</div>
     </div>
 
     <div class="card">
-      <h2>② Results</h2>
-      <div class="big"><div class="lab">Bayesian Win Rate</div><div class="val" id="o_post">–</div></div>
+      <h2>② 分析结果</h2>
+      <div class="big"><div class="lab">后验胜率 Bayesian Win Rate</div><div class="val" id="o_post">–</div></div>
       <div class="big" style="background:linear-gradient(135deg,#2a1f3a,#1a1f27);border-color:rgba(191,90,242,.35)">
-        <div class="lab" style="color:var(--purple)">Better Than</div><div class="val" id="o_better">–</div></div>
-      <div class="metric"><span class="k">95% Credible Interval</span><span class="v" id="o_ci">–</span></div>
-      <div class="metric"><span class="k">Posterior Std Error</span><span class="v" id="o_se">–</span></div>
-      <div class="metric"><span class="k">Weight (toward observed)</span><span class="v" id="o_w">–</span></div>
+        <div class="lab" style="color:var(--purple)">你打败了多少玩家</div><div class="val" id="o_better">–</div></div>
+      <div class="metric"><span class="k">95% 可信区间 Credible Interval</span><span class="v" id="o_ci">–</span></div>
+      <div class="metric"><span class="k">后验标准误 Posterior SE</span><span class="v" id="o_se">–</span></div>
+      <div class="metric"><span class="k">加权系数 Weight (偏向实测)</span><span class="v" id="o_w">–</span></div>
     </div>
 
     <div class="card">
-      <h2>③ Distribution Curves</h2>
-      <div class="chartbox"><canvas id="chart"></canvas></div>
-      <div class="legend">
-        <span><i style="background:#0a84ff"></i>Population</span>
-        <span><i style="background:#ffd60a"></i>Observed</span>
-        <span><i style="background:#30d158"></i>Posterior (true)</span>
-      </div>
-      <div class="muted">The further right the green curve sits, the stronger you are.</div>
+      <h2>③ 分布曲线</h2>
+      <canvas id="chart" height="220"></canvas>
+      <div class="muted">蓝=总体玩家分布，黄=你的观测分布，绿=后验(真实估计)分布。绿线越靠右，说明你越强。</div>
     </div>
   </div>
 
+  <!-- ============ 资金管理 ============ -->
   <div class="view" id="brm">
     <div class="card">
-      <h2>① Inputs</h2>
+      <h2>① 输入参数</h2>
       <div class="grid">
-        <div class="field"><label>Base Stake (USD)</label><input id="base" type="number" step="1" value="0"></div>
-        <div class="field"><label>FX Rate (USD/CNY)</label><input id="fx" type="number" step="0.01" value="0"></div>
-        <div class="field"><label>Deposited Bankroll (USD)</label><input id="dep" type="number" step="1" value="0"></div>
-        <div class="field"><label>Current Bankroll (USD) — for level check</label><input id="cur" type="number" step="1" value="0"></div>
+        <div class="field"><label>基准级别 Base Stake (USD)</label><input id="base" type="number" step="1" value="100"></div>
+        <div class="field"><label>汇率 FX Rate (USD/CNY)</label><input id="fx" type="number" step="0.01" value="6.84"></div>
+        <div class="field"><label>已充值 Deposited BR (USD)</label><input id="dep" type="number" step="1" value="500"></div>
+        <div class="field"><label>当前资金 Current BR (USD) — 判断级别用</label><input id="cur" type="number" step="1" value="2875"></div>
       </div>
-      <div class="muted">All values are saved locally in your browser. Refresh or come back later — they stay as you left them.</div>
     </div>
 
     <div class="card">
-      <h2>② Bankroll Dashboard</h2>
-      <div class="metric"><span class="k">Shot Stake</span><span class="v" id="b_shot">–</span></div>
-      <div class="metric"><span class="k">Initial Bankroll ($)</span><span class="v" id="b_init">–</span></div>
-      <div class="metric"><span class="k">Initial Bankroll (¥)</span><span class="v" id="b_initcny">–</span></div>
-      <div class="metric"><span class="k">Stop-Loss / Bust Line ($)</span><span class="v" style="color:var(--red)" id="b_stop">–</span></div>
-      <div class="metric"><span class="k">Remaining to Deposit ($)</span><span class="v" style="color:var(--orange)" id="b_remain">–</span></div>
+      <h2>② 资金看板</h2>
+      <div class="metric"><span class="k">出击级别 Shot Stake</span><span class="v" id="b_shot">–</span></div>
+      <div class="metric"><span class="k">初始总资金 Initial BR ($)</span><span class="v" id="b_init">–</span></div>
+      <div class="metric"><span class="k">初始总资金 Initial BR (¥)</span><span class="v" id="b_initcny">–</span></div>
+      <div class="metric"><span class="k">破产红线 Stop-Loss ($)</span><span class="v" style="color:var(--red)" id="b_stop">–</span></div>
+      <div class="metric"><span class="k">等待充钱 Remaining ($)</span><span class="v" style="color:var(--orange)" id="b_remain">–</span></div>
     </div>
 
     <div class="card">
-      <h2>③ Forced Move-Down Protocol (current level highlighted)</h2>
+      <h2>③ 强制降级协议（当前所处级别已高亮）</h2>
       <table>
-        <thead><tr><th style="text-align:left">Protocol</th><th>Play</th><th>Range ($)</th></tr></thead>
+        <thead><tr><th style="text-align:left">协议</th><th>动作 打</th><th>区间 ($)</th></tr></thead>
         <tbody id="planbody"></tbody>
       </table>
     </div>
 
     <div class="card">
-      <h2>④ 4-Tabling Hard Stop-Loss Lines</h2>
-      <div class="muted" style="margin-top:-8px;margin-bottom:10px">When 4-tabling, once your bankroll drops to the listed amount you must move down / leave that stake.</div>
+      <h2>④ 4-Tabling 绝对止损线</h2>
+      <div class="muted" style="margin-top:-8px;margin-bottom:10px">同时开 4 桌时，资金一旦跌到对应金额，就要从该级别的桌子降级 / 离场。</div>
       <table>
-        <thead><tr><th style="text-align:left">Table & Trigger</th><th>Drops To ($)</th></tr></thead>
+        <thead><tr><th style="text-align:left">在哪个桌子 + 触发条件</th><th>跌到此金额 ($)</th></tr></thead>
         <tbody id="stopbody"></tbody>
       </table>
     </div>
   </div>
 
-  <!-- ========== TAB 3: SESSION TIMER ========== -->
+    <!-- ========== TAB 3: SESSION TIMER ========== -->
   <div class="view" id="timer">
     <div class="card">
-      <h2>⏱ Session Timer</h2>
-      <div class="timer-label" id="timer_status_label"><span class="timer-status-pill status-ready">Ready</span></div>
+      <h2>⏱ 会话计时器</h2>
+      <div class="timer-label" id="timer_status_label"><span class="timer-status-pill status-ready">就绪</span></div>
       <div class="timer-display" id="timer_display">30:00</div>
       <div class="timer-bar"><div class="timer-bar-inner" id="timer_bar" style="width:100%"></div></div>
       <div class="grid">
-        <div class="field"><label>Session Length (minutes)</label><input id="timer_minutes" class="timer-minutes-input" type="number" min="1" max="480" value="30"></div>
+        <div class="field"><label>时长（分钟）</label><input id="timer_minutes" class="timer-minutes-input" type="number" min="1" max="480" value="30"></div>
       </div>
       <div class="timer-actions">
-        <div class="btn btn-start" id="btn_start">▶ Start</div>
-        <div class="btn btn-pause" id="btn_pause" style="display:none">⏸ Pause</div>
-        <div class="btn btn-reset" id="btn_reset">⟳ Reset</div>
+        <div class="btn btn-start" id="btn_start">▶ 开始</div>
+        <div class="btn btn-pause" id="btn_pause" style="display:none">⏸ 暂停</div>
+        <div class="btn btn-reset" id="btn_reset">⟳ 重置</div>
       </div>
       <div style="margin-top:14px;text-align:center">
         <div class="btn btn-start" id="btn_open_popup" style="display:inline-flex;padding:8px 24px;align-items:center;gap:6px;font-size:13px;background:var(--blue);border-color:var(--blue);color:#fff">
-          ⬜ Pop-out floating timer
+          ⬜ 弹出悬浮计时器
         </div>
       </div>
     </div>
 
     <div class="card today-card">
-      <h2>📊 Today's Activity</h2>
-      <div class="big"><div class="lab">Total Session Time Today</div><div class="val" id="today_total">0 min</div></div>
-      <div class="muted">Resets daily. Only counts completed sessions.</div>
+      <h2>📊 今日活动</h2>
+      <div class="big"><div class="lab">今日累计时长</div><div class="val" id="today_total">0 min</div></div>
+      <div class="muted">每天重置，只统计已完成的会话。</div>
     </div>
   </div>
 
@@ -222,130 +215,92 @@
   <div id="timer_overlay">
     <div class="overlay-inner">
       <div class="icon">⏰</div>
-      <h2>Time's Up!</h2>
-      <p id="overlay_msg">Your session has ended.</p>
-      <button class="btn-dismiss" id="overlay_dismiss">OK</button>
+      <h2>时间到！</h2>
+      <p id="overlay_msg">你的会话已结束。</p>
+      <button class="btn-dismiss" id="overlay_dismiss">知道了</button>
     </div>
   </div>
 
   <div class="foot">
-    Your data is stored only in your local browser and is never uploaded.<br>
-    Poker carries risk. Bankroll management and win-rate analysis are for reference only and are not financial or gambling advice.
+    数据仅保存在你本地浏览器，不会上传。<br>
+    扑克有风险，资金管理与胜率分析仅供参考，不构成任何投资或博彩建议。
   </div>
 </div>
 
 <script>
-const $=id=>document.getElementById(id);
-const num=id=>parseFloat($(id).value)||0;
-const fmtUSD=v=>'$'+Math.round(v).toLocaleString('en-US');
-const fmtCNY=v=>'¥'+Math.round(v).toLocaleString('en-US');
-
-// ---- Tab switching ----
+// ---------- tabs ----------
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
-  t.classList.add('active'); $(t.dataset.v).classList.add('active');
-  if(t.dataset.v==='calc') drawChart();
+  t.classList.add('active'); document.getElementById(t.dataset.v).classList.add('active');
+  if(t.dataset.v==='calc') setTimeout(()=>chart&&chart.resize(),50);
 });
 
-// ---- Bayesian Win Rate ----
+// ---------- math ----------
+const $=id=>document.getElementById(id);
+const num=id=>parseFloat($(id).value)||0;
 function erf(x){const s=x<0?-1:1;x=Math.abs(x);
   const a1=.254829592,a2=-.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=.3275911;
   const t=1/(1+p*x);const y=1-((((a5*t+a4)*t+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);return s*y;}
 const normCdf=(x,mu,sd)=>0.5*(1+erf((x-mu)/(sd*Math.SQRT2)));
 const normPdf=(x,mu,sd)=>Math.exp(-((x-mu)**2)/(2*sd*sd))/(sd*Math.sqrt(2*Math.PI));
+const fmtUSD=v=>'$'+Math.round(v).toLocaleString('en-US');
+const fmtCNY=v=>'¥'+Math.round(v).toLocaleString('zh-CN');
 
-let cache={};
+// ---------- calculator ----------
+let chart=null;
 function renderCalc(){
   const wr=num('wr'), hands=num('hands'), popMean=num('popmean'), popSd=num('popsd');
   const sd = $('sdtype').value==='custom' ? num('sdcustom') : parseFloat($('sdtype').value);
-  const se = sd/Math.sqrt(hands/100);
-  const w  = (1/se**2)/((1/se**2)+(1/popSd**2));
-  const post = w*wr + (1-w)*popMean;
-  const postSe = se*Math.sqrt(w);
-  const better = normCdf(post, popMean, popSd);
+  const se = sd/Math.sqrt(hands/100);                       // C9 standard error
+  const w  = (1/se**2)/((1/se**2)+(1/popSd**2));            // C8 weight
+  const post = w*wr + (1-w)*popMean;                        // C10 posterior WR
+  const postSe = se*Math.sqrt(w);                           // C11 posterior SE
+  const better = normCdf(post, popMean, popSd);            // C12 / J9
+  const lo=post-postSe, hi=post+postSe;                     // H13/I13
+
   $('o_post').textContent = post.toFixed(1)+' ± '+postSe.toFixed(1)+' bb/100';
-  $('o_better').textContent = (better*100).toFixed(1)+'% of players';
-  $('o_ci').textContent = (post-postSe).toFixed(1)+' to '+(post+postSe).toFixed(1)+' bb/100';
+  $('o_better').textContent = (better*100).toFixed(1)+'%';
+  $('o_ci').textContent = lo.toFixed(1)+' ~ '+hi.toFixed(1)+' bb/100';
   $('o_se').textContent = postSe.toFixed(2)+' bb/100';
   $('o_w').textContent = (w*100).toFixed(1)+'%';
-  cache={wr,se,popMean,popSd,post,postSe};
-  drawChart();
-}
 
-// ---- lightweight canvas chart ----
-function drawChart(){
-  const cv=$('chart'); if(!cv.clientWidth) return;
-  const dpr=window.devicePixelRatio||1;
-  const W=cv.clientWidth, H=Math.max(200,Math.round(W*0.5));
-  cv.width=W*dpr; cv.height=H*dpr; cv.style.height=H+'px';
-  const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
-  const padL=10,padR=10,padT=10,padB=26;
-  const xmin=-30,xmax=30, plotW=W-padL-padR, plotH=H-padT-padB;
-  const series=[
-    {mu:cache.popMean,sd:cache.popSd,c:'#0a84ff'},
-    {mu:cache.wr,sd:cache.se,c:'#ffd60a'},
-    {mu:cache.post,sd:cache.postSe,c:'#30d158'},
+  // distribution curves -30..30
+  const lab=[],pop=[],obs=[],pos=[];
+  for(let i=0;i<=120;i++){const x=-30+i*0.5;lab.push(x.toFixed(0));
+    pop.push(normPdf(x,popMean,popSd)); obs.push(normPdf(x,wr,se)); pos.push(normPdf(x,post,postSe));}
+  const ds=[
+    {label:'总体玩家',data:pop,borderColor:'#0a84ff',backgroundColor:'rgba(10,132,255,.08)',fill:true,pointRadius:0,tension:.3,borderWidth:2},
+    {label:'你的观测',data:obs,borderColor:'#ffd60a',backgroundColor:'rgba(255,214,10,.06)',fill:true,pointRadius:0,tension:.3,borderWidth:2},
+    {label:'后验(真实)',data:pos,borderColor:'#30d158',backgroundColor:'rgba(48,209,88,.10)',fill:true,pointRadius:0,tension:.3,borderWidth:2.5},
   ];
-  const N=240; let ymax=0;
-  series.forEach(s=>{s.pts=[];for(let i=0;i<=N;i++){const x=xmin+(xmax-xmin)*i/N;const y=normPdf(x,s.mu,s.sd);s.pts.push([x,y]);if(y>ymax)ymax=y;}});
-  ymax*=1.1; if(ymax<=0)ymax=1;
-  const X=x=>padL+(x-xmin)/(xmax-xmin)*plotW;
-  const Y=y=>padT+plotH-(y/ymax)*plotH;
-  // grid + x axis labels
-  ctx.strokeStyle='#222933'; ctx.fillStyle='#9aa4b2'; ctx.font='11px sans-serif'; ctx.textAlign='center';
-  for(let gx=-30;gx<=30;gx+=10){ctx.beginPath();ctx.moveTo(X(gx),padT);ctx.lineTo(X(gx),padT+plotH);ctx.stroke();ctx.fillText(gx,X(gx),H-8);}
-  ctx.beginPath();ctx.moveTo(padL,padT+plotH);ctx.lineTo(W-padR,padT+plotH);ctx.strokeStyle='#2c333f';ctx.stroke();
-  // curves
-  series.forEach(s=>{
-    ctx.beginPath();
-    s.pts.forEach((p,i)=>{const px=X(p[0]),py=Y(p[1]);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});
-    ctx.lineWidth=2.4; ctx.strokeStyle=s.c; ctx.stroke();
-    ctx.lineTo(X(xmax),Y(0)); ctx.lineTo(X(xmin),Y(0)); ctx.closePath();
-    ctx.globalAlpha=.10; ctx.fillStyle=s.c; ctx.fill(); ctx.globalAlpha=1;
-  });
-}
-window.addEventListener('resize',drawChart);
-
-['wr','hands','sdtype','sdcustom','popmean','popsd'].forEach(id=>$(id).addEventListener('input',renderCalc));
-
-// ---- Bankroll Manager (with localStorage persistence) ----
-const BRM_KEY = 'poker_bankroll_data';
-
-function loadBrmData(){
-  const raw = localStorage.getItem(BRM_KEY);
-  if(raw){
-    try{
-      const d = JSON.parse(raw);
-      ['base','fx','dep','cur'].forEach(k=>{
-        if(d[k]!==undefined && d[k]!==null) $(k).value = d[k];
-      });
-    }catch(e){}
-  }
+  if(!chart){
+    chart=new Chart($('chart'),{type:'line',data:{labels:lab,datasets:ds},
+      options:{responsive:true,interaction:{mode:'index',intersect:false},
+        scales:{x:{ticks:{color:'#9aa4b2',maxTicksLimit:13},grid:{color:'#222933'},title:{display:true,text:'bb/100',color:'#9aa4b2'}},
+                y:{ticks:{display:false},grid:{color:'#222933'}}},
+        plugins:{legend:{labels:{color:'#e8ebf0'}}}}});
+  }else{chart.data.labels=lab;chart.data.datasets=ds;chart.update('none');}
 }
 
-function saveBrmData(){
-  const d = {};
-  ['base','fx','dep','cur'].forEach(k=>{ d[k] = num(k); });
-  localStorage.setItem(BRM_KEY, JSON.stringify(d));
-}
-
+// ---------- bankroll ----------
 const protocols=[
   {name:'AGGRESSIVE SHOT',act:'2B',hi:28.75,lo:18.75,c:'var(--purple)'},
   {name:'DEFENSIVE 1',act:'B',hi:18.75,lo:13.75,c:'var(--blue)'},
   {name:'DEFENSIVE 2',act:'B/2',hi:13.75,lo:11.25,c:'var(--yellow)'},
   {name:'SURVIVAL MODE',act:'B/4',hi:11.25,lo:10,c:'var(--orange)'},
-  {name:'CUSHION RECOVERY',act:'B (recover)',hi:10,lo:5,c:'var(--accent)'},
-  {name:'BANKRUPT',act:'STOP',hi:5,lo:0,c:'var(--red)'},
+  {name:'CUSHION RECOVERY',act:'B 恢复',hi:10,lo:5,c:'var(--accent)'},
+  {name:'BANKRUPT',act:'停止',hi:5,lo:0,c:'var(--red)'},
 ];
+// stake = 该止损线对应的桌子买入额(美元倍数), thresh = 触发金额(B倍数)
 const stops=[
-  {stake:2,   thresh:10.75, note:'Highest stake table'},
-  {stake:1,   thresh:9.75,  note:'Main stake table'},
-  {stake:0.5, thresh:9.25,  note:'Defensive stake table'},
-  {stake:0.25,thresh:9,     note:'Survival stake table'},
-  {stake:1,   thresh:1,     note:'Main table · second move-down'},
+  {stake:2,   thresh:10.75, note:'最高级别桌'},
+  {stake:1,   thresh:9.75,  note:'主力级别桌'},
+  {stake:0.5, thresh:9.25,  note:'防守级别桌'},
+  {stake:0.25,thresh:9,     note:'生存级别桌'},
+  {stake:1,   thresh:1,     note:'主力桌·二次降级'},
 ];
-function actVal(a,B){return a==='2B'?2*B:a==='B'?B:a==='B/2'?B/2:a==='B/4'?B/4:a==='B (recover)'?B:null;}
+function actVal(a,B){return a==='2B'?2*B:a==='B'?B:a==='B/2'?B/2:a==='B/4'?B/4:a==='B 恢复'?B:'—';}
 function renderBrm(){
   const B=num('base'), fx=num('fx'), dep=num('dep'), cur=num('cur');
   const init=28.75*B, stop=5*B, shot=2*B;
@@ -354,25 +309,28 @@ function renderBrm(){
   $('b_initcny').textContent=fmtCNY(init*fx);
   $('b_stop').textContent=fmtUSD(stop);
   $('b_remain').textContent=fmtUSD(Math.max(0,init-dep));
+  // plan
   $('planbody').innerHTML=protocols.map(p=>{
     let inBand = p.name==='AGGRESSIVE SHOT' ? cur>=p.lo*B
       : p.name==='BANKRUPT' ? cur<p.hi*B
       : (cur>=p.lo*B && cur<p.hi*B);
-    const range = p.name==='BANKRUPT' ? ('< '+fmtUSD(5*B)) : (fmtUSD(p.hi*B)+' – '+fmtUSD(p.lo*B));
-    const av=actVal(p.act,B);
-    const action = av===null ? 'STOP' : ('Play '+fmtUSD(av)+(p.act==='B (recover)'?' (recover)':''));
+    const range = p.name==='BANKRUPT' ? ('< '+fmtUSD(5*B)) : (fmtUSD(p.hi*B)+' ~ '+fmtUSD(p.lo*B));
+    const av=actVal(p.act,B); const action=typeof av==='number'?('打 '+fmtUSD(av).replace('$','$')+(p.act==='B 恢复'?' 恢复':'')):p.act;
     return `<tr class="${inBand?'cur':''}">
-      <td class="lvl"><span class="pill" style="background:${p.c}22;color:${p.c}">${p.name}</span>${inBand?' ◀ NOW':''}</td>
-      <td>${action}</td><td>${range}</td></tr>`;
+      <td class="lvl"><span class="pill" style="background:${p.c}22;color:${p.c}">${p.name}</span>${inBand?' ◀ 当前':''}</td>
+      <td>${typeof av==='number'? (p.act==='停止'?'停止':'打 $'+Math.round(av).toLocaleString()+(p.act==='B 恢复'?' 恢复':'')) : '停止'}</td>
+      <td>${range}</td></tr>`;
   }).join('');
   $('stopbody').innerHTML=stops.map(s=>{
-    return `<tr><td class="lvl">${fmtUSD(s.stake*B)} table · move-down line<div class="muted" style="margin:0">${s.note}</div></td><td style="color:var(--red);font-weight:700">${fmtUSD(s.thresh*B)}</td></tr>`;
+    const tableBuyin=fmtUSD(s.stake*B);
+    return `<tr><td class="lvl">打 ${tableBuyin} 的桌子 · 降级线<div class="muted" style="margin:0">${s.note}</div></td><td style="color:var(--red);font-weight:700">${fmtUSD(s.thresh*B)}</td></tr>`;
   }).join('');
-  saveBrmData();
 }
+
+// ---------- bind ----------
+['wr','hands','sdtype','sdcustom','popmean','popsd'].forEach(id=>$(id).addEventListener('input',renderCalc));
 ['base','fx','dep','cur'].forEach(id=>$(id).addEventListener('input',renderBrm));
-loadBrmData();
-renderBrm();
+renderCalc(); renderBrm();
 
 // ======================== SESSION TIMER ========================
 let timerState = 'idle';   // idle | running | paused | done
@@ -409,8 +367,8 @@ function timerShowButtons(showStart, showPause, showReset){
   $('btn_start').style.display = showStart ? 'block' : 'none';
   $('btn_pause').style.display = showPause ? 'block' : 'none';
   $('btn_reset').style.display = showReset ? 'block' : 'none';
-  if(timerState === 'running') $('btn_pause').textContent = '⏸ Pause';
-  if(timerState === 'paused') $('btn_pause').textContent = '▶ Resume';
+  if(timerState === 'running') $('btn_pause').textContent = '⏸ 暂停';
+  if(timerState === 'paused') $('btn_pause').textContent = '▶ 继续';
 }
 
 function timerTick(){
@@ -422,7 +380,7 @@ function timerTick(){
     clearInterval(timerInterval);
     timerInterval = null;
     timerState = 'done';
-    timerSetStatus('Completed','status-done');
+    timerSetStatus('已完成','status-done');
     timerShowButtons(false, false, true);
     timerOnComplete();
   }
@@ -433,9 +391,9 @@ const ORIG_TITLE = document.title;
 
 function updatePageTitle(display){
   if(timerState === 'running'){
-    document.title = display + ' ♠ Poker Toolkit';
+    document.title = display + ' ♠ 扑克工具台';
   } else if(timerState === 'paused'){
-    document.title = '⏸ ' + display + ' ♠ Poker Toolkit';
+    document.title = '⏸ ' + display + ' ♠ 扑克工具台';
   } else {
     document.title = ORIG_TITLE;
   }
@@ -489,20 +447,20 @@ async function openTimerPiP(){
   }
   if(!('documentPictureInPicture' in window)){
     // Browser doesn't support Document PiP (e.g. Safari/Firefox).
-    $('btn_open_popup').textContent = '⚠ Use Chrome/Edge for pop-out';
-    setTimeout(()=>{ $('btn_open_popup').textContent = '⬜ Pop-out floating timer'; }, 3000);
+    $('btn_open_popup').textContent = '⚠ 请用 Chrome/Edge 弹出';
+    setTimeout(()=>{ $('btn_open_popup').textContent = '⬜ 弹出悬浮计时器'; }, 3000);
     return;
   }
   try{
     pipWindow = await documentPictureInPicture.requestWindow({ width: 240, height: 120 });
     pipTimeEl = buildPiPContent(pipWindow);
     updatePiP();
-    $('btn_open_popup').textContent = '✓ Floating timer open';
+    $('btn_open_popup').textContent = '✓ 悬浮计时器已打开';
     // When the user closes the floating window, reset our references.
     pipWindow.addEventListener('pagehide', ()=>{
       pipWindow = null;
       pipTimeEl = null;
-      $('btn_open_popup').textContent = '⬜ Pop-out floating timer';
+      $('btn_open_popup').textContent = '⬜ 弹出悬浮计时器';
     });
   }catch(e){
     pipWindow = null;
@@ -528,10 +486,10 @@ function timerStart(){
   if (!pipWindow || pipWindow.closed) {
     openTimerPiP();
   }
-  timerSetStatus('Running','status-running');
+  timerSetStatus('进行中','status-running');
   timerShowButtons(false, true, true);
   $('btn_start').style.display = 'none';
-  $('btn_pause').textContent = '⏸ Pause';
+  $('btn_pause').textContent = '⏸ 暂停';
   timerInterval = setInterval(timerTick, 200);
 }
 
@@ -541,18 +499,18 @@ function timerPause(){
     timerInterval = null;
     timerRemaining = Math.max(0, Math.round((timerEnd - Date.now())/1000));
     timerState = 'paused';
-    timerSetStatus('Paused','status-paused');
+    timerSetStatus('已暂停','status-paused');
     timerShowButtons(false, true, true);
-    $('btn_pause').textContent = '▶ Resume';
+    $('btn_pause').textContent = '▶ 继续';
     timerUpdateUI();
     return;
   }
   if(timerState === 'paused'){
     timerEnd = Date.now() + timerRemaining*1000;
     timerState = 'running';
-    timerSetStatus('Running','status-running');
+    timerSetStatus('进行中','status-running');
     timerShowButtons(false, true, true);
-    $('btn_pause').textContent = '⏸ Pause';
+    $('btn_pause').textContent = '⏸ 暂停';
     timerInterval = setInterval(timerTick, 200);
     timerUpdateUI();
   }
@@ -566,10 +524,10 @@ function timerReset(){
   closeTimerPiP();
   timerRemaining = parseInt($('timer_minutes').value)*60 || 1800;
   timerUpdateUI();
-  timerSetStatus('Ready','status-ready');
+  timerSetStatus('就绪','status-ready');
   timerShowButtons(true, false, true);
   $('timer_bar').style.width = '100%';
-  $('btn_open_popup').textContent = '⬜ Pop-out floating timer';
+  $('btn_open_popup').textContent = '⬜ 弹出悬浮计时器';
 }
 
 // "Pop-out floating timer" button
@@ -621,14 +579,14 @@ function stopAlarm(){
 
 function timerOnComplete(){
   updatePiP();   // show 00:00 in red inside the floating window
-  document.title = '⏰ Time\'s Up! ♠ Poker Toolkit';
+  document.title = '⏰ 时间到！ ♠ 扑克工具台';
   startAlarm();
   const sessionMinutes = Math.round(parseInt($('timer_minutes').value) || 30);
   addDailySessionMinutes(sessionMinutes);
-  $('overlay_msg').textContent = 'Your ' + sessionMinutes + '-min session has ended.';
+  $('overlay_msg').textContent = '你的 ' + sessionMinutes + ' 分钟会话已结束。';
   $('timer_overlay').classList.add('show');
   if('Notification' in window && Notification.permission === 'granted'){
-    try{ new Notification('♠ Poker Session Complete', {body: sessionMinutes+' min session ended. Take a break!'}); }catch(e){}
+    try{ new Notification('♠ 扑克会话完成', {body: sessionMinutes+' 分钟会话已结束，休息一下吧！'}); }catch(e){}
   }
 }
 $('overlay_dismiss').onclick = ()=>{
